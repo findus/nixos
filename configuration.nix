@@ -4,10 +4,15 @@
 
 { config, lib, pkgs, ... }:
 
+let
+  home-manager = builtins.fetchTarball "https://github.com/nix-community/home-manager/archive/release-25.05.tar.gz";
+in
+
 {
   imports =
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
+      (import "${home-manager}/nixos")
     ];
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
@@ -19,6 +24,11 @@
     { from = 47998; to = 48000; }
     { from = 8000; to = 8010; }
   ];
+};
+
+systemd.services."getty@tty1" = {
+  overrideStrategy = "asDropin";
+  serviceConfig.ExecStart = ["" "@${pkgs.util-linux}/sbin/agetty agetty --login-program ${config.services.getty.loginProgram} --autologin findus --noclear --keep-baud %I 115200,38400,9600 $TERM"];
 };
 
  # rtkit (optional, recommended) allows Pipewire to use the realtime scheduler for increased performance.
@@ -40,11 +50,32 @@
     openFirewall = true;
   };
 
+  environment.variables = {
+  __GL_SYNC_TO_VBLANK = "1";        # sync with monitor
+  __GL_MaxFramesAllowed = "1";      # reduce frame queue
+  __GL_GSYNC_ALLOWED = "0";         # disable G-SYNC if present
+};
+
   environment.etc."sway/config".text = pkgs.lib.mkForce ''
   exec sunshine
   exec alacritty
-  output HDMI-A-1 pos 0 0 res 3840x2160
+  output HDMI-A-1 pos 0 0 res 3840x2160@60Hz
 '';
+
+home-manager.users.findus = { pkgs, ... }: {
+    home.packages = [ pkgs.atool pkgs.httpie ];
+    programs.bash.enable = true;
+    # The state version is required and should stay at the version you
+    # originally installed.
+    home.stateVersion = "25.05";
+     # Add a shell hook for all login shells
+    programs.bash.profileExtra = ''
+        if [[ -z $DISPLAY && $(tty) == /dev/tty1 ]]; then
+          exec sway --unsupported-gpu
+        fi
+        echo "lol"
+    '';
+  };
 
   environment.systemPackages = with pkgs; [
     # Flakes clones its dependencies through the git command,
