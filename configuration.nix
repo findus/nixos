@@ -59,6 +59,7 @@ systemd.services."getty@tty1" = {
   environment.etc."sway/config".text = pkgs.lib.mkForce ''
   exec sunshine
   exec alacritty
+  exec steam -bigpicture
   output HDMI-A-1 pos 0 0 res 3840x2160@60Hz
   for_window [app_id=".*"] exec /home/findus/stfd
 '';
@@ -73,6 +74,10 @@ home-manager.users.findus = { pkgs, ... }: {
         shift
         swaymsg -s /var/run/user/1000/sway*.sock "[con_id=$id]" "$@"
       '')
+      (pkgs.writeShellScriptBin "sound" ''
+        #!/usr/bin/env bash
+        pactl set-default-sink $(pactl list short sinks | grep hdmi-stereo | awk '{ print $1  }')
+      '')
     ];
     programs.bash.enable = true;
     # The state version is required and should stay at the version you
@@ -83,6 +88,7 @@ home-manager.users.findus = { pkgs, ... }: {
         if [[ -z $DISPLAY && $(tty) == /dev/tty1 ]]; then
           #exec sway --unsupported-gpu
           exec niri
+          #exec bash
         fi
         echo "lol"
     '';
@@ -102,6 +108,33 @@ home-manager.users.findus = { pkgs, ... }: {
         spawn-at-startup "alacritty"
         spawn-at-startup "sunshine"
         spawn-at-startup "steam" "-bigpicture"
+
+        output "HDMI-A-1" {
+          mode "3840x2160@59.940"
+          scale 1
+        }
+
+        output "DP-1" {
+          mode "2560x1440@59.951"
+          scale 1
+        }
+
+        window-rule {
+          open-maximized true
+          open-fullscreen true
+          open-floating false
+          open-focused true
+          max-width 2560
+          max-height 1440
+        } 
+
+        binds {
+          Mod+T { spawn "alacritty"; }
+          Mod+A { focus-column-left; }
+          Mod+S { focus-window-or-workspace-down; }
+          Mod+W { focus-window-or-workspace-up; }
+          Mod+D { focus-column-right; }
+        }
       '';
       executable = true;
     };
@@ -132,6 +165,7 @@ home-manager.users.findus = { pkgs, ... }: {
     # so git must be installed first
     git
     vim
+    pkgs.mangohud
     wget
     curl
     sway
@@ -143,13 +177,6 @@ home-manager.users.findus = { pkgs, ... }: {
     pstree
     jq
   ];
-
-  programs.steam = {
-    enable = true;
-    remotePlay.openFirewall = true; # Open ports in the firewall for Steam Remote Play
-    dedicatedServer.openFirewall = true; # Open ports in the firewall for Source Dedicated Server
-    localNetworkGameTransfers.openFirewall = true; # Open ports in the firewall for Steam Local Network Game Transfers
-  };
 
   nixpkgs.config.allowUnfree = true;
 
@@ -235,6 +262,26 @@ home-manager.users.findus = { pkgs, ... }: {
     # Optionally, you may need to select the appropriate driver version for your specific GPU.
     package = config.boot.kernelPackages.nvidiaPackages.stable;
   };
+
+
+boot.kernelPackages = pkgs.linuxPackages; # (this is the default) some amdgpu issues on 6.10
+programs = {
+  gamescope = {
+    enable = true;
+    capSysNice = true;
+  };
+  steam = {
+    enable = true;
+    gamescopeSession.enable = true;
+  };
+};
+hardware.xone.enable = true; # support for the xbox controller USB dongle
+services.getty.autologinUser = "findus";
+#environment = {
+#  loginShellInit = ''
+#    [[ "$(tty)" = "/dev/tty1" ]] && ./gs.sh
+#  '';
+#};
 
 }
 
