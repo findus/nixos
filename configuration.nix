@@ -147,6 +147,11 @@ services = {
     vlc # Cross-platform media player and streaming server
     wayland-utils # Wayland utilities
     wl-clipboard # Command-line copy/paste utilities for Wayland
+    blender
+    telegram-desktop
+    fractal
+    spotify
+    nextcloud-client
   ];
 
   nixpkgs.config.allowUnfree = true;
