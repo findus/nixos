@@ -4,15 +4,10 @@
 
 { config, lib, pkgs, ... }:
 
-let
-  home-manager = builtins.fetchTarball "https://github.com/nix-community/home-manager/archive/release-25.05.tar.gz";
-in
-
 {
   imports =
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
-      (import "${home-manager}/nixos")
     ];
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
@@ -50,10 +45,39 @@ systemd.services."getty@tty1" = {
     openFirewall = true;
   };
 
+services = {
+  desktopManager.plasma6.enable = true;
+
+  displayManager.sddm.enable = true;
+
+  displayManager.sddm.wayland.enable = true;
+  
+  # Ensure the NVIDIA card is used for rendering
+  displayManager.sddm.extraPackages = with pkgs; [
+    kdePackages.kirigami
+    kdePackages.layer-shell-qt
+  ];
+  
+  # Use Wayland by default for the display manager
+  displayManager.sddm.session = "plasmawayland";
+};
+
+
+  hardware.bluetooth.enable = true;
+  services.blueman.enable = true;
+
   environment.variables = {
   __GL_SYNC_TO_VBLANK = "1";        # sync with monitor
   __GL_MaxFramesAllowed = "1";      # reduce frame queue
   __GL_GSYNC_ALLOWED = "0";         # disable G-SYNC if present
+  LIBVA_DRIVER_NAME = "nvidia";     # Use nvidia for VA-API acceleration
+  XDG_SESSION_TYPE = "wayland";     # Force wayland session
+  CLUTTER_BACKEND = "wayland";      # Use wayland for clutter (KDE uses this)
+  GBM_BACKEND = "nvidia-drm";       # Use NVIDIA's GBM backend for wayland
+  __GLX_VENDOR_LIBRARY_NAME = "nvidia"; # Direct glx to nvidia
+  NVIDIA_MIG_MONITOR_DEVICES = "all"; # Enable all GPU devices
+  KWIN_DRM_THREAD_WORKER_ONLY = "0"; # Allow KWin to use GPU properly
+  ENABLE_NVIDIA_MODESET = "1";       # Ensure NVIDIA modeset is enabled
 };
 
   environment.etc."sway/config".text = pkgs.lib.mkForce ''
@@ -63,102 +87,6 @@ systemd.services."getty@tty1" = {
   output HDMI-A-1 pos 0 0 res 3840x2160@60Hz
   for_window [app_id=".*"] exec /home/findus/stfd
 '';
-
-home-manager.users.findus = { pkgs, ... }: {
-    home.packages = [ 
-      pkgs.atool pkgs.httpie 
-      (pkgs.writeShellScriptBin "tgx" ''
-        #!/usr/bin/env bash
-        set -x
-        id=$(swaymsg -s /var/run/user/1000/sway* -t get_tree | jq -r "recurse(.nodes[]?, .floating_nodes[]?) | select( .name | test(\"^$1\") )  | .id ")
-        shift
-        swaymsg -s /var/run/user/1000/sway*.sock "[con_id=$id]" "$@"
-      '')
-      (pkgs.writeShellScriptBin "sound" ''
-        #!/usr/bin/env bash
-        pactl set-default-sink $(pactl list short sinks | grep hdmi-stereo | awk '{ print $1  }')
-      '')
-    ];
-    programs.bash.enable = true;
-    # The state version is required and should stay at the version you
-    # originally installed.
-    home.stateVersion = "25.05";
-     # Add a shell hook for all login shells
-    programs.bash.profileExtra = ''
-        if [[ -z $DISPLAY && $(tty) == /dev/tty1 ]]; then
-          #exec sway --unsupported-gpu
-          exec niri
-          #exec bash
-        fi
-        echo "lol"
-    '';
-
-    home.file."bin/stfd" = {
-      text = ''
-        #!/usr/bin/env bash
-        id=$(swaymsg -s /var/run/user/1000/sway* -t get_tree | jq -r 'recurse(.nodes[]?, .floating_nodes[]?) | select( .name == "Steam Big Picture Mode" ) |  .id ')
-        swaymsg -s /var/run/user/1000/sway*.sock "[con_id=$id]" fullscreen disable
-      '';
-      executable = true;
-    };
-
-
-    home.file.".config/niri/config.kdl" = {
-      text = ''
-        spawn-at-startup "alacritty"
-        spawn-at-startup "sunshine"
-        spawn-at-startup "steam" "-bigpicture"
-
-        output "HDMI-A-1" {
-          mode "3840x2160@59.940"
-          scale 1
-        }
-
-        output "DP-1" {
-          mode "2560x1440@59.951"
-          scale 1
-        }
-
-        window-rule {
-          open-maximized true
-          open-fullscreen true
-          open-floating false
-          open-focused true
-          max-width 2560
-          max-height 1440
-        } 
-
-        binds {
-          Mod+T { spawn "alacritty"; }
-          Mod+A { focus-column-left; }
-          Mod+S { focus-window-or-workspace-down; }
-          Mod+W { focus-window-or-workspace-up; }
-          Mod+D { focus-column-right; }
-        }
-      '';
-      executable = true;
-    };
-
-    home.file."bin/sttf" = {
-      text = ''
-        #!/usr/bin/env bash
-        id=$(swaymsg -s /var/run/user/1000/sway* -t get_tree | jq -r 'recurse(.nodes[]?, .floating_nodes[]?) | select( .name == "Steam Big Picture Mode" ) |  .id ')
-        swaymsg -s /var/run/user/1000/sway*.sock "[con_id=$id]" fullscreen
-      '';
-      executable = true;
-    };
-
-    home.file."bin/tgf" = {
-      text = ''
-        #!/usr/bin/env bash
-        id=$(swaymsg -s /var/run/user/1000/sway* -t get_tree | jq -r "recurse(.nodes[]?, .floating_nodes[]?) | select( .name | test(\"^$1\") ) | .id ")
-        swaymsg -s /var/run/user/1000/sway*.sock "[con_id=$id]" fullscreen
-      '';
-      executable = true;
-    };
- 
-
-  };
 
   environment.systemPackages = with pkgs; [
     # Flakes clones its dependencies through the git command,
@@ -176,9 +104,44 @@ home-manager.users.findus = { pkgs, ... }: {
     pulseaudio
     pstree
     jq
+    bluetui
+    ncpamixer
+    pipenv
+    pyenv
+    gcc
+    gnumake
+    python311
+    cudaPackages.cudnn
+    cudaPackages.cudatoolkit
+    (pkgs.python311.withPackages (ps: with ps; [ tkinter ]))
+    ffmpeg
+    kdePackages.discover # Optional: Install if you use Flatpak or fwupd firmware update sevice
+    kdePackages.kcalc # Calculator
+    kdePackages.kcharselect # Tool to select and copy special characters from all installed fonts
+    kdePackages.kclock # Clock app
+    kdePackages.kcolorchooser # A small utility to select a color
+    kdePackages.kolourpaint # Easy-to-use paint program
+    kdePackages.ksystemlog # KDE SystemLog Application
+    kdePackages.sddm-kcm # Configuration module for SDDM
+    kdiff3 # Compares and merges 2 or 3 files or directories
+    kdePackages.isoimagewriter # Optional: Program to write hybrid ISO files onto USB disks
+    kdePackages.partitionmanager # Optional: Manage the disk devices, partitions and file systems on your computer
+    # Non-KDE graphical packages
+    hardinfo2 # System information and benchmarks for Linux systems
+    vlc # Cross-platform media player and streaming server
+    wayland-utils # Wayland utilities
+    wl-clipboard # Command-line copy/paste utilities for Wayland
   ];
 
   nixpkgs.config.allowUnfree = true;
+
+  nixpkgs.overlays = [  
+    (self: super: {  
+    python311 = super.python311.override {  
+    x11Support = true;  
+    };  
+    })  
+      ];  
 
   # Set the default editor to vim
   environment.variables.EDITOR = "vim";
@@ -198,9 +161,6 @@ home-manager.users.findus = { pkgs, ... }: {
      isNormalUser = true;
     initialPassword = "1234";
      extraGroups = [ "wheel" ]; # Enable ‘sudo’ for the user.
-     packages = with pkgs; [
-       tree
-     ];
    };
 
   
@@ -223,6 +183,15 @@ home-manager.users.findus = { pkgs, ... }: {
 
   # For more information, see `man configuration.nix` or https://nixos.org/manual/nixos/stable/options#opt-system.stateVersion .
   system.stateVersion = "25.05"; # Did you read the comment?
+
+  # Set kernel packages first (before NVIDIA config)
+  boot.kernelPackages = pkgs.linuxPackages; # (this is the default) some amdgpu issues on 6.10
+
+  # Kernel parameters for NVIDIA 4K@60Hz support on Wayland
+  boot.kernelParams = [
+    "nvidia-drm.modeset=1"  # Required for DRM modesetting
+    "nvidia-drm.fbdev=1"    # Enable framebuffer device for better display handling
+  ];
 
     # Enable OpenGL
   hardware.graphics = {
@@ -259,12 +228,15 @@ home-manager.users.findus = { pkgs, ... }: {
 	# accessible via `nvidia-settings`.
     nvidiaSettings = true;
 
-    # Optionally, you may need to select the appropriate driver version for your specific GPU.
+    # Enable explicit Wayland support (critical for proper refresh rates)
+    forceFullCompositionPipeline = false;
+
+    # Using a stable driver version - 550+ has improved Wayland support
+    # Change to .stable for stable releases or .beta for latest features
     package = config.boot.kernelPackages.nvidiaPackages.stable;
   };
 
 
-boot.kernelPackages = pkgs.linuxPackages; # (this is the default) some amdgpu issues on 6.10
 programs = {
   gamescope = {
     enable = true;
@@ -277,11 +249,14 @@ programs = {
 };
 hardware.xone.enable = true; # support for the xbox controller USB dongle
 services.getty.autologinUser = "findus";
-#environment = {
-#  loginShellInit = ''
-#    [[ "$(tty)" = "/dev/tty1" ]] && ./gs.sh
-#  '';
-#};
+environment = {
+  loginShellInit = ''
+    [[ "$(tty)" = "/dev/tty1" ]] && ./gs.sh
+  '';
+sessionVariables = {
+      LD_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}/lib";
+    };
+};
 
 }
 

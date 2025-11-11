@@ -1,5 +1,5 @@
 #!/bin/bash
 set -x
 MACHINE='root@192.168.69.105'
-rsync -avz configuration.nix hardware-configuration.nix ${MACHINE}:/etc/nixos/
-ssh ${MACHINE} nixos-rebuild switch
+rsync -avz home.nix flake.nix configuration.nix hardware-configuration.nix ${MACHINE}:/root/
+ssh ${MACHINE} bash -c 'nixos-rebuild switch --flake .#chonker'
