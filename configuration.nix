@@ -21,6 +21,18 @@
   ];
 };
 
+boot.kernelPackages = pkgs.linuxPackagesFor (pkgs.linux_6_12.override {
+    argsOverride = rec {
+      src = pkgs.fetchurl {
+            url = "mirror://kernel/linux/kernel/v6.x/linux-${version}.tar.xz";
+            sha256 = "sha256-Flyhw3xGB7kOcxmWt8HjMRKFFn0T3u7fCPPx8LnSVBo=";
+      };
+      version = "6.12.57";
+      modDirVersion = "6.12.57";
+      };
+  });
+
+
 systemd.services."getty@tty1" = {
   overrideStrategy = "asDropin";
   serviceConfig.ExecStart = ["" "@${pkgs.util-linux}/sbin/agetty agetty --login-program ${config.services.getty.loginProgram} --autologin findus --noclear --keep-baud %I 115200,38400,9600 $TERM"];
@@ -58,8 +70,6 @@ services = {
     kdePackages.layer-shell-qt
   ];
   
-  # Use Wayland by default for the display manager
-  displayManager.sddm.session = "plasmawayland";
 };
 
 
@@ -78,7 +88,12 @@ services = {
   NVIDIA_MIG_MONITOR_DEVICES = "all"; # Enable all GPU devices
   KWIN_DRM_THREAD_WORKER_ONLY = "0"; # Allow KWin to use GPU properly
   ENABLE_NVIDIA_MODESET = "1";       # Ensure NVIDIA modeset is enabled
+  # NVIDIA Wayland-specific fixes for refresh rate
+  NVIDIA_PRESERVE_VIDEO_MEMORY_ALLOCATIONS = "1"; # Preserve VRAM allocations
+  KWIN_NO_SCALE_FROM_EDID = "1";     # Don't use EDID for scaling
 };
+
+
 
   environment.etc."sway/config".text = pkgs.lib.mkForce ''
   exec sunshine
@@ -126,6 +141,7 @@ services = {
     kdiff3 # Compares and merges 2 or 3 files or directories
     kdePackages.isoimagewriter # Optional: Program to write hybrid ISO files onto USB disks
     kdePackages.partitionmanager # Optional: Manage the disk devices, partitions and file systems on your computer
+    kdePackages.kscreen # KDE display configuration tool
     # Non-KDE graphical packages
     hardinfo2 # System information and benchmarks for Linux systems
     vlc # Cross-platform media player and streaming server
@@ -184,58 +200,40 @@ services = {
   # For more information, see `man configuration.nix` or https://nixos.org/manual/nixos/stable/options#opt-system.stateVersion .
   system.stateVersion = "25.05"; # Did you read the comment?
 
-  # Set kernel packages first (before NVIDIA config)
-  boot.kernelPackages = pkgs.linuxPackages; # (this is the default) some amdgpu issues on 6.10
 
   # Kernel parameters for NVIDIA 4K@60Hz support on Wayland
   boot.kernelParams = [
     "nvidia-drm.modeset=1"  # Required for DRM modesetting
     "nvidia-drm.fbdev=1"    # Enable framebuffer device for better display handling
+    "nvidia.NVreg_EnableModesetByDefault=1"  # Force NVIDIA modesetting
+    "nvidia.NVreg_DynamicPowerManagement=0x02"  # Better power management
+    "nvidia.NVreg_RegistryDwords=RmGpuLockSpinlockThreshold=0x00000000"  # Optimize lock handling
   ];
 
     # Enable OpenGL
-  hardware.graphics = {
-    enable = true;
+hardware.graphics = {
+  enable = true;
+};
+
+# Load nvidia driver for Xorg and Wayland
+services.xserver.videoDrivers = ["nvidia"];
+
+
+hardware.nvidia = let
+  unstable = import <nixos-unstable> {
+    config = { allowUnfree = true; };
   };
+in {
+  package = unstable.linuxPackages.nvidiaPackages.production;
+  modesetting.enable = true;
+  powerManagement.enable = true;
+  nvidiaSettings = true;
+  open = true;
+};
 
-  # Load nvidia driver for Xorg and Wayland
-  services.xserver.videoDrivers = ["nvidia"];
+boot.kernelModules = [ "nvidia" "nvidia_modeset" "nvidia_uvm" "nvidia_drm"];
 
-  hardware.nvidia = {
-
-    # Modesetting is required.
-    modesetting.enable = true;
-
-    # Nvidia power management. Experimental, and can cause sleep/suspend to fail.
-    # Enable this if you have graphical corruption issues or application crashes after waking
-    # up from sleep. This fixes it by saving the entire VRAM memory to /tmp/ instead 
-    # of just the bare essentials.
-    powerManagement.enable = false;
-
-    # Fine-grained power management. Turns off GPU when not in use.
-    # Experimental and only works on modern Nvidia GPUs (Turing or newer).
-    powerManagement.finegrained = false;
-
-    # Use the NVidia open source kernel module (not to be confused with the
-    # independent third-party "nouveau" open source driver).
-    # Support is limited to the Turing and later architectures. Full list of 
-    # supported GPUs is at: 
-    # https://github.com/NVIDIA/open-gpu-kernel-modules#compatible-gpus 
-    # Only available from driver 515.43.04+
-    open = false;
-
-    # Enable the Nvidia settings menu,
-	# accessible via `nvidia-settings`.
-    nvidiaSettings = true;
-
-    # Enable explicit Wayland support (critical for proper refresh rates)
-    forceFullCompositionPipeline = false;
-
-    # Using a stable driver version - 550+ has improved Wayland support
-    # Change to .stable for stable releases or .beta for latest features
-    package = config.boot.kernelPackages.nvidiaPackages.stable;
-  };
-
+  
 
 programs = {
   gamescope = {

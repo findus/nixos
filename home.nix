@@ -11,6 +11,19 @@
   # changes in each release.
   home.stateVersion = "25.05";
 
+  # KDE Plasma 6 display configuration for 4K@60Hz
+  home.file.".config/kscreen/kscreenrc".text = ''
+    [OutputOrder]
+    outputs=HDMI-A-1
+
+    [HDMI-A-1]
+    enabled=true
+    mode=3840x2160@60
+    position=0x0
+    scale=1
+    rotation=Normal
+  '';
+
 home.packages = [ 
       (pkgs.python311.withPackages (ps: with ps; [ tkinter ]))
       pkgs.atool pkgs.httpie 
