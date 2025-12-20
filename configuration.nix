@@ -14,13 +14,17 @@
 
   networking.firewall = {
   enable = true;
-  allowedTCPPorts = [ 47984 47989 47990 48010 ];
+  allowedTCPPortRanges = [
+     { from = 1714; to = 1764; }
+  ];
   allowedUDPPortRanges = [
     { from = 47998; to = 48000; }
     { from = 8000; to = 8010; }
+    { from = 1714; to = 1764; } 
   ];
+  allowedTCPPorts = [ 53317 ];
+  allowedUDPPorts = [ 53317 ];
 };
-
 boot.kernelPackages = pkgs.linuxPackagesFor (pkgs.linux_6_12.override {
     argsOverride = rec {
       src = pkgs.fetchurl {
@@ -106,6 +110,7 @@ services = {
   environment.systemPackages = with pkgs; [
     # Flakes clones its dependencies through the git command,
     # so git must be installed first
+    vscode
     git
     vim
     pkgs.mangohud
@@ -125,6 +130,8 @@ services = {
     pyenv
     gcc
     gnumake
+    thunderbird
+    nvtopPackages.nvidia
     python311
     cudaPackages.cudnn
     cudaPackages.cudatoolkit
@@ -147,28 +154,32 @@ services = {
     vlc # Cross-platform media player and streaming server
     wayland-utils # Wayland utilities
     wl-clipboard # Command-line copy/paste utilities for Wayland
-    blender
     telegram-desktop
     fractal
     spotify
     nextcloud-client
+    cudaPackages.cudatoolkit
+    (blender.override { cudaSupport = true; })
+    flatpak
+    keepassxc
+    kdePackages.kdenlive 
+    (ghidra.withExtensions (p: with p; [ ret-sync ]))
+    gdb
+    krita
+    gimp
+
   ];
 
   nixpkgs.config.allowUnfree = true;
 
-  nixpkgs.overlays = [  
-    (self: super: {  
-    python311 = super.python311.override {  
-    x11Support = true;  
-    };  
-    })  
-      ];  
-
+ 
   # Set the default editor to vim
   environment.variables.EDITOR = "vim";
 
   # Use the GRUB 2 boot loader.
   boot.loader.systemd-boot.enable = true;
+
+
 
   networking.hostName = "chonker";
   networking.networkmanager.enable = true;  # Easiest to use and most distros use this by default.
@@ -190,10 +201,30 @@ services = {
   # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.
   programs.mtr.enable = true;
-  programs.gnupg.agent = {
-   enable = true;
-   enableSSHSupport = true;
+
+ programs.kdeconnect.enable = true;
+
+
+  # Enable Flatpak support and add the Flathub repository
+
+ services.flatpak.enable = true;
+ systemd.services.flatpak-repo = {
+    wantedBy = [ "multi-user.target" ];
+    path = [ pkgs.flatpak ];
+    script = ''
+      flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+    ''; 
  };
+
+ systemd.user.services.add_ssh_keys = {
+    script = ''
+      eval `${pkgs.openssh}/bin/ssh-agent -s`
+      export SSH_ASKPASS="${pkgs.kdePackages.ksshaskpass}/bin/ksshaskpass"
+      export SSH_ASKPASS_REQUIRE="prefer"
+      ${pkgs.openssh}/bin/ssh-add $HOME/.ssh/key
+    '';
+    wantedBy = [ "default.target" ];
+  };
 
  services.openssh.settings.PermitRootLogin = "yes";
 
@@ -205,16 +236,6 @@ services = {
   # For more information, see `man configuration.nix` or https://nixos.org/manual/nixos/stable/options#opt-system.stateVersion .
   system.stateVersion = "25.05"; # Did you read the comment?
 
-
-  # Kernel parameters for NVIDIA 4K@60Hz support on Wayland
-  boot.kernelParams = [
-    "nvidia-drm.modeset=1"  # Required for DRM modesetting
-    "nvidia-drm.fbdev=1"    # Enable framebuffer device for better display handling
-    "nvidia.NVreg_EnableModesetByDefault=1"  # Force NVIDIA modesetting
-    "nvidia.NVreg_DynamicPowerManagement=0x02"  # Better power management
-    "nvidia.NVreg_RegistryDwords=RmGpuLockSpinlockThreshold=0x00000000"  # Optimize lock handling
-  ];
-
     # Enable OpenGL
 hardware.graphics = {
   enable = true;
@@ -223,13 +244,9 @@ hardware.graphics = {
 # Load nvidia driver for Xorg and Wayland
 services.xserver.videoDrivers = ["nvidia"];
 
+hardware.nvidia.package = config.boot.kernelPackages.nvidiaPackages.beta;   # Latest beta driver
 
-hardware.nvidia = let
-  unstable = import <nixos-unstable> {
-    config = { allowUnfree = true; };
-  };
-in {
-  package = unstable.linuxPackages.nvidiaPackages.production;
+hardware.nvidia = {
   modesetting.enable = true;
   powerManagement.enable = true;
   nvidiaSettings = true;
@@ -238,28 +255,27 @@ in {
 
 boot.kernelModules = [ "nvidia" "nvidia_modeset" "nvidia_uvm" "nvidia_drm"];
 
-  
 
 programs = {
   gamescope = {
-    enable = true;
+    #enable = true;
     capSysNice = true;
   };
   steam = {
     enable = true;
-    gamescopeSession.enable = true;
+   # gamescopeSession.enable = true;
   };
 };
 hardware.xone.enable = true; # support for the xbox controller USB dongle
 services.getty.autologinUser = "findus";
-environment = {
-  loginShellInit = ''
-    [[ "$(tty)" = "/dev/tty1" ]] && ./gs.sh
-  '';
-sessionVariables = {
-      LD_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}/lib";
-    };
-};
+#environment = {
+#  loginShellInit = ''
+#    [[ "$(tty)" = "/dev/tty1" ]] && ./gs.sh
+#  '';
+#sessionVariables = {
+#      LD_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}/lib";
+#    };
+#};
 
 }
 

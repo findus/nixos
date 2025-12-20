@@ -2,4 +2,4 @@
 set -x
 MACHINE='root@192.168.69.105'
 rsync -avz home.nix flake.nix configuration.nix hardware-configuration.nix ${MACHINE}:/root/
-ssh ${MACHINE} bash -c 'nixos-rebuild switch --flake .#chonker'
+ssh ${MACHINE} bash -c 'cd /root; nixos-rebuild switch --flake .#chonker'

@@ -24,9 +24,12 @@
     rotation=Normal
   '';
 
+
+
+services.kdeconnect.enable = true;
+
 home.packages = [ 
-      (pkgs.python311.withPackages (ps: with ps; [ tkinter ]))
-      pkgs.atool pkgs.httpie 
+  pkgs.darktable
       (pkgs.writeShellScriptBin "tgx" ''
         #!/usr/bin/env bash
         set -x
@@ -49,6 +52,13 @@ home.packages = [
           echo "nothing"
         fi
         echo "lol"
+
+        rm ~/.ssh/ssh_auth_sock
+killall ssh-agent
+if [ ! -S ~/.ssh/ssh_auth_sock ]; then
+	eval `ssh-agent`
+	ln -sf "$SSH_AUTH_SOCK" ~/.ssh/ssh_auth_sock
+fi
     '';
 
     home.file."bin/stfd" = {
