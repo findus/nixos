@@ -1,5 +1,5 @@
 {
-  description = "NixOS flake for chonker";
+  description = "NixOS flake for my pcs";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
@@ -10,7 +10,7 @@
       nixosConfigurations.chonker = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
-          ./configuration.nix
+          ./hosts/chonker/configuration.nix
           home-manager.nixosModules.home-manager 
           {
             home-manager.useGlobalPkgs = true;
